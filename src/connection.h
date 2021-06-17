@@ -9,7 +9,7 @@ public:
         : _port{port}
         , SourcePort<Type>{initValue} {}
 
-    Type &get(typename SourcePort<Type>::TimePoint t) override {
+    const Type &get(typename SourcePort<Type>::TimePoint t) override {
         if (_port) {
             return _port->get(t);
         }

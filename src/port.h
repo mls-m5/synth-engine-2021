@@ -19,14 +19,16 @@ public:
     Port(const Port &) = delete;
     Port &operator=(const Port &) = delete;
 
-    virtual Type &get(TimePoint t) = 0;
+    //! Update and get internal data
+    virtual const Type &get(TimePoint t) = 0;
 
+    //! Update port data
     virtual void update(TimePoint t) = 0;
 
     virtual ~Port() = default;
 };
 
-//! Part of port that only returns data
+//! A port that is red from, causing the port to update its data
 template <typename Type>
 class SourcePort : public Port<Type> {
 public:
@@ -35,12 +37,7 @@ public:
     SourcePort(Type initValue = {})
         : _data{std::move(initValue)} {}
 
-    const Type &get() {
-        this->update(this->_updateTime);
-        return this->_data;
-    }
-
-    Type &get(typename PortT::TimePoint t) override {
+    const Type &get(typename PortT::TimePoint t) override {
         this->update(t);
         return this->_data;
     }
@@ -50,29 +47,33 @@ protected:
     typename PortT::TimePoint _updateTime = {};
 };
 
+//! Audio sink port is used internally in objects that wishes to write data
 template <typename Type>
 class SinkPort : public SourcePort<Type> {
 public:
-    SinkPort(Type initValue = {})
-        : SourcePort<Type>{std::move(initValue)} {}
+    using SourcePortT = SourcePort<Type>;
 
-    //! Do nothing
+    using SourcePortT::SourcePortT;
+
     void update(typename SourcePort<Type>::TimePoint) {}
 
     //! Return reference for writing to port
-    auto &get() {
+    auto &data() {
         return this->_data;
     }
 
+    //! Set the value of the port
     const Type &set(const Type &value) {
         return this->_data = value;
     }
 };
 
+//! Sink port that also calls a specified function when updated
 template <typename Type>
 class SinkCallbackPort : public SinkPort<Type> {
 public:
-    using SourcePortT = SourcePort<Type>;
+    using SourcePortT = typename SinkPort<Type>::SourcePortT;
+
     using UpdateFunctionT =
         std::function<void(SinkPort<Type> &, typename SourcePortT::TimePoint)>;
 
