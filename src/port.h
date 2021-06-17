@@ -15,77 +15,78 @@ public:
     using TimePoint = std::chrono::high_resolution_clock::time_point;
 
     Port() = default;
-    Port(Type value)
-        : _data{value} {};
 
     Port(const Port &) = delete;
     Port &operator=(const Port &) = delete;
 
-    Type &data(TimePoint t) {
-        return _data;
-    }
+    virtual Type &get(TimePoint t) = 0;
 
-    const Type &data(const Type &value) {
-        return _data = value;
-    }
+    virtual void update(TimePoint t) = 0;
 
     virtual ~Port() = default;
-
-protected:
-    Type _data;
-    TimePoint _updateTime = {};
 };
 
-//! Port used to produce new data
+//! Part of port that only returns data
 template <typename Type>
 class SourcePort : public Port<Type> {
 public:
     using PortT = Port<Type>;
 
     SourcePort(Type initValue = {})
-        : PortT{std::move(initValue)} {}
+        : _data{std::move(initValue)} {}
 
-    const Type &data() {
-        update(this->_updateTime);
+    const Type &get() {
+        this->update(this->_updateTime);
         return this->_data;
     }
 
-    virtual void update(typename PortT::TimePoint t) = 0;
-
-    auto &port() {
-        return _port;
+    Type &get(typename PortT::TimePoint t) override {
+        this->update(t);
+        return this->_data;
     }
 
-    operator PortT &() {
-        return _port;
-    }
-
-    PortT _port;
+protected:
+    Type _data;
+    typename PortT::TimePoint _updateTime = {};
 };
 
 template <typename Type>
 class SinkPort : public SourcePort<Type> {
 public:
-    using SourcePortT = SourcePort<Type>;
-    using UpdateFunctionT = std::function<void(SinkPort<Type> &)>;
+    SinkPort(Type initValue = {})
+        : SourcePort<Type>{std::move(initValue)} {}
 
-    SinkPort(UpdateFunctionT f, Type initValue = {})
-        : SourcePort<Type>{std::move(initValue)}
+    //! Do nothing
+    void update(typename SourcePort<Type>::TimePoint) {}
+
+    //! Return reference for writing to port
+    auto &get() {
+        return this->_data;
+    }
+
+    const Type &set(const Type &value) {
+        return this->_data = value;
+    }
+};
+
+template <typename Type>
+class SinkCallbackPort : public SinkPort<Type> {
+public:
+    using SourcePortT = SourcePort<Type>;
+    using UpdateFunctionT =
+        std::function<void(SinkPort<Type> &, typename SourcePortT::TimePoint)>;
+
+    SinkCallbackPort(UpdateFunctionT f, Type initValue = {})
+        : SinkPort<Type>{std::move(initValue)}
         , _f{f} {}
 
     void update(typename SourcePortT::PortT::TimePoint t) override {
         if (t > this->_updateTime) {
-            this->_f(*this);
             this->_updateTime = t;
+            this->_f(*this, this->_updateTime);
         }
     }
 
-    //! Return reference for writing to port
-    auto &data() {
-        return this->_data;
-    }
-
 private:
-    Port<Type> _port;
     UpdateFunctionT _f = {};
 };
